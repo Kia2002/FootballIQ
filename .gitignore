@@ -1,0 +1,50 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.vscode/
+*.DotSettings.user
+
+## Build output
+[Bb]uild/
+[Rr]elease/
+[Dd]ebug/
+[Pp]ublish/
+artifacts/
+
+## NuGet
+*.nupkg
+.nuget/
+packages/
+
+## Environment and secrets
+.env
+.env.local
+appsettings.Development.json
+appsettings.Production.json
+
+## Data — never commit these
+data/statsbomb/
+data/eval/results-*.json
+
+## Docker volumes
+.docker/
+
+## OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+## JetBrains
+.idea/
+*.iml
+
+## Claude Code skill infrastructure (not application code)
+.agents/
+skills-lock.json
+
+## Test results
+TestResults/
+coverage/
