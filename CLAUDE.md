@@ -287,6 +287,15 @@ _What you learn: OpenTelemetry, Problem Details (RFC 7807), Railway deployment, 
 **Mistake I made:** [Optional: what went wrong and how it was fixed]
 ```
 
+**Comprehension checks:** After significant milestones, a question is asked to verify understanding. Record every Q&A in LEARNING.md under the relevant task entry:
+
+```
+### Comprehension Check
+**Q:** [The question asked]
+**My answer:** [What the user said, verbatim or close to it]
+**Verdict:** [Correct / Partially correct / Needs revisiting — plus the key addition or correction]
+```
+
 Update this at the end of every session.
 
 ---
