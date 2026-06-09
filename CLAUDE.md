@@ -129,8 +129,8 @@ _What you learn: Clean Architecture structure, EF Core, Testcontainers, GitHub A
 | # | Task | Done when | Status |
 |---|------|-----------|--------|
 | 1.1 | Create solution + 8 projects + correct project references | `dotnet build FootballIQ.sln` succeeds. Dependency graph correct. | ✅ |
-| 1.2 | Docker Compose + PostgreSQL 16 + pgvector | `docker compose up -d` → postgres shows healthy | 🔲 |
-| 1.3 | EF Core + Npgsql + DbContext + connection string from env | `dotnet ef migrations add InitialCreate` runs without error | 🔲 |
+| 1.2 | Docker Compose + PostgreSQL 16 + pgvector | `docker compose up -d` → postgres shows healthy | ✅ |
+| 1.3 | EF Core + Npgsql + DbContext + connection string from env | `dotnet ef migrations add InitialCreate` runs without error | ✅ |
 | 1.4 | Domain entities + EF migration (Player, Match, PlayerStats) | Migration applied. Tables exist in DB. | 🔲 |
 | 1.5 | IPlayerRepository interface + PlayerRepository | Interface defined. Implementation compiles. | 🔲 |
 | 1.6 | football-data.org typed HTTP client + Polly retry | Can fetch and deserialize a fixture list from real API | 🔲 |
