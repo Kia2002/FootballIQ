@@ -107,3 +107,25 @@ The one thing to add: if Domain referenced Application, you'd create a circular 
 **My answer:** In the application layer we define use cases and what our system needs, in infrastructure it's about how it's done. It's more flexible this way since we can swap databases without touching business logic, and it's testable — we can mock the data without needing a real database.
 
 **Verdict:** Partially correct — the "why this design is good" reasoning (flexibility, testability) is right, but missed the concrete "what breaks" mechanism the question was after: a future query handler in `Application` needs `IPlayerRepository` as a constructor parameter type, which requires a project reference to wherever the interface lives. If that were `Infrastructure`, `Application` would need to reference `Infrastructure` — but `Infrastructure` already references `Application` (to implement the interface). Two projects referencing each other is a **circular dependency**, and .NET refuses to compile that — same rule from the Task 1.1 check, one layer further out. Putting the interface in `Application` keeps the reference graph one-directional.
+
+---
+
+## Task 1.6: football-data.org Typed HTTP Client + Polly Retry
+**What we built:** `FootballDataClient` — a small wrapper around `HttpClient` that calls football-data.org's `/v4/competitions/{id}/matches` endpoint and deserializes the JSON into C# record DTOs (`CompetitionMatchesResponse`, `MatchDto`, `TeamDto`, `ScoreDto`, etc.). Registered it in `Program.cs` via `AddHttpClient<FootballDataClient>(...)`, configured with the base URL and `X-Auth-Token` header, chained with a Polly retry policy. Verified it with a real integration test that hits the live API.
+
+**Key concept: Typed HTTP Client (`IHttpClientFactory`).** Instead of `new HttpClient()` everywhere (which can cause socket exhaustion under load), `AddHttpClient<FootballDataClient>(...)` registers `FootballDataClient` in DI and configures the `HttpClient` it receives — base address, default headers — all in one place. The class itself never hardcodes the URL or API key.
+
+**Key concept: Polly retry policy (`AddTransientHttpErrorPolicy` + `WaitAndRetryAsync`).** Wraps every request from `FootballDataClient` with automatic retries — but *only* for **transient** failures (network exceptions, `5xx`, `408`). `WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)))` retries up to 3 times with **exponential backoff** (2s, 4s, 8s) — spacing retries out so a struggling server gets room to recover instead of being hammered.
+
+**Key concept: `JsonSerializerDefaults.Web` for DTO deserialization.** football-data.org returns camelCase JSON (`utcDate`, `homeTeam`); C# DTOs use PascalCase (`UtcDate`, `HomeTeam`). `JsonSerializerDefaults.Web` enables case-insensitive property matching, so no `[JsonPropertyName]` attributes are needed when the only difference is the first letter's case.
+
+**Why it matters:** Every external API call in production needs both of these — connection pooling (typed clients) and resilience to transient blips (Polly). This is the standard .NET pattern for *any* outbound HTTP call, and we'll reuse the same shape later for other external services.
+
+**Mistake I made:** Tried to set the env var for the test using PowerShell syntax (`$env:FOOTBALLDATA_API_KEY="..."`) inside a Git Bash command. Bash doesn't understand that syntax — it errored on the `$env:...` part, then ran `dotnet test` anyway (because `;` doesn't stop on a failed command), so the test ran *without* the env var set and passed vacuously via its early-return skip path. Correct Git Bash syntax for a one-off env var is `VAR=value command` (no `$`, no `;`).
+
+### Comprehension Check
+**Q:** Suppose football-data.org returns a `401 Unauthorized` (e.g. bad/expired API key). Would the Polly retry policy retry that request? Why or why not — and what would the developer actually see happen?
+
+**My answer:** It wouldn't retry the request since we don't have authorization and if we did retry it wouldn't change a single thing. Not sure what we'd see — probably an error or exception.
+
+**Verdict:** Correct on the "why" — `401` isn't transient (it's about the request itself, not a passing condition), so `AddTransientHttpErrorPolicy` (which only watches `5xx`/`408`/network exceptions) ignores it. Added detail on "what you'd see": `EnsureSuccessStatusCode()` throws `HttpRequestException` for any non-2xx status. With no error-handling middleware yet, an unhandled exception during a request becomes a raw `500 Internal Server Error` (full stack trace visible in Development mode) — this is exactly the "leaky error" problem that Task 6.2 (Problem Details middleware) will fix later.

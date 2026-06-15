@@ -134,7 +134,7 @@ _What you learn: Clean Architecture structure, EF Core, Testcontainers, GitHub A
 | 1.3 | EF Core + Npgsql + DbContext + connection string from env | `dotnet ef migrations add InitialCreate` runs without error | ✅ |
 | 1.4 | Domain entities + EF migration (Club, Player, PlayerSeasonStats, Match) | Migration applied. Tables exist in DB. | ✅ |
 | 1.5 | IPlayerRepository interface + PlayerRepository | Interface defined. Implementation compiles. | ✅ |
-| 1.6 | football-data.org typed HTTP client + Polly retry | Can fetch and deserialize a fixture list from real API | 🔲 |
+| 1.6 | football-data.org typed HTTP client + Polly retry | Can fetch and deserialize a fixture list from real API | ✅ |
 | 1.7 | GET /api/health + GET /api/players endpoints | Both return 200 OK in Swagger UI | 🔲 |
 | 1.8 | Domain unit tests (5+ assertions) | `dotnet test FootballIQ.Domain.Tests` all pass | 🔲 |
 | 1.9 | Testcontainers integration test: create + read player | Test creates real DB, passes, container stops cleanly | 🔲 |
