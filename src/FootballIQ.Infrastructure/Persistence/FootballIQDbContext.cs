@@ -1,3 +1,4 @@
+using FootballIQ.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace FootballIQ.Infrastructure.Persistence;
@@ -9,8 +10,15 @@ public class FootballIQDbContext : DbContext
     {
     }
 
+    public DbSet<Club> Clubs => Set<Club>();
+    public DbSet<Player> Players => Set<Player>();
+    public DbSet<PlayerSeasonStats> PlayerSeasonStats => Set<PlayerSeasonStats>();
+    public DbSet<Match> Matches => Set<Match>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(FootballIQDbContext).Assembly);
     }
 }

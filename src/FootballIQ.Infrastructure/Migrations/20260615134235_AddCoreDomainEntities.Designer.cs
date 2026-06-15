@@ -3,6 +3,7 @@ using System;
 using FootballIQ.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FootballIQ.Infrastructure.Migrations
 {
     [DbContext(typeof(FootballIQDbContext))]
-    partial class FootballIQDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260615134235_AddCoreDomainEntities")]
+    partial class AddCoreDomainEntities
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
