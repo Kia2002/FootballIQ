@@ -73,8 +73,9 @@ FootballIQ/
 ├── FootballIQ.sln
 ├── src/
 │   ├── FootballIQ.Domain/
-│   │   ├── Entities/           Player.cs, Match.cs, PlayerStats.cs
-│   │   ├── ValueObjects/       Position.cs, Season.cs
+│   │   ├── Entities/           Club.cs, Player.cs, PlayerSeasonStats.cs, Match.cs
+│   │   ├── Enums/               Position.cs, Foot.cs
+│   │   ├── ValueObjects/       Season.cs (reserved for future value objects with real behavior)
 │   │   └── Exceptions/         PlayerNotFoundException.cs
 │   ├── FootballIQ.Application/
 │   │   ├── Scouting/Queries/   ScoutPlayersQuery.cs, ScoutPlayersQueryHandler.cs
@@ -85,7 +86,7 @@ FootballIQ/
 │   │   │                       IEmbeddingService.cs, ILlmService.cs, IStatsBombReader.cs
 │   │   └── DTOs/               ScoutingResultDto.cs, PlayerMatchDto.cs, EvalReportDto.cs
 │   ├── FootballIQ.Infrastructure/
-│   │   ├── Persistence/        FootballIQDbContext.cs, Migrations/, PlayerRepository.cs
+│   │   ├── Persistence/        FootballIQDbContext.cs, Migrations/, Configurations/, PlayerRepository.cs
 │   │   ├── StatsBomb/          StatsBombReader.cs, StatsBombIngestionService.cs, Models/
 │   │   ├── FootballData/       FootballDataClient.cs
 │   │   ├── VectorSearch/       PgVectorSearchService.cs, BM25SearchService.cs,
@@ -107,7 +108,7 @@ FootballIQ/
 ├── data/
 │   ├── statsbomb/              ← gitignored. Clone separately.
 │   └── eval/                   ← scouting-eval.json, results-*.json
-├── docs/architecture/
+├── docs/architecture/          domain-model.md
 ├── .github/workflows/ci.yml
 ├── docker-compose.yml
 ├── .env.example
@@ -131,8 +132,8 @@ _What you learn: Clean Architecture structure, EF Core, Testcontainers, GitHub A
 | 1.1 | Create solution + 8 projects + correct project references | `dotnet build FootballIQ.sln` succeeds. Dependency graph correct. | ✅ |
 | 1.2 | Docker Compose + PostgreSQL 16 + pgvector | `docker compose up -d` → postgres shows healthy | ✅ |
 | 1.3 | EF Core + Npgsql + DbContext + connection string from env | `dotnet ef migrations add InitialCreate` runs without error | ✅ |
-| 1.4 | Domain entities + EF migration (Player, Match, PlayerStats) | Migration applied. Tables exist in DB. | 🔲 |
-| 1.5 | IPlayerRepository interface + PlayerRepository | Interface defined. Implementation compiles. | 🔲 |
+| 1.4 | Domain entities + EF migration (Club, Player, PlayerSeasonStats, Match) | Migration applied. Tables exist in DB. | ✅ |
+| 1.5 | IPlayerRepository interface + PlayerRepository | Interface defined. Implementation compiles. | ✅ |
 | 1.6 | football-data.org typed HTTP client + Polly retry | Can fetch and deserialize a fixture list from real API | 🔲 |
 | 1.7 | GET /api/health + GET /api/players endpoints | Both return 200 OK in Swagger UI | 🔲 |
 | 1.8 | Domain unit tests (5+ assertions) | `dotnet test FootballIQ.Domain.Tests` all pass | 🔲 |
@@ -152,6 +153,7 @@ _What you learn: JSON parsing, IHostedService background workers, data aggregati
 | 2.5 | Idempotent ingestion + IngestionLog table | Running twice → identical row counts, no duplicates | 🔲 |
 | 2.6 | POST /api/admin/ingest endpoint (async background) | POST → wait → GET /api/players returns real players | 🔲 |
 | 2.7 | Integration test: ingest 1 match, assert player stats | Test green, stats in expected range | 🔲 |
+| 2.8 | Player demographic enrichment — choose a data source (Wikidata SPARQL / football-data.org / curated dataset) and populate `DateOfBirth` + `PreferredFoot` during ingestion | Data source chosen and documented in domain-model.md; `DateOfBirth` populated for the majority of ingested players | 🔲 |
 
 ### Layer 3: Semantic Search
 _What we build: Semantic player search (meaning-based, not keyword)_

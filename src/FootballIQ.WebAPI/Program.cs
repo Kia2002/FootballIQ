@@ -1,3 +1,4 @@
+using FootballIQ.Application.Interfaces;
 using FootballIQ.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,6 +11,8 @@ var connectionString = builder.Configuration["POSTGRES_CONNECTION_STRING"]
 
 builder.Services.AddDbContext<FootballIQDbContext>(options =>
     options.UseNpgsql(connectionString));
+
+builder.Services.AddScoped<IPlayerRepository, PlayerRepository>();
 
 var app = builder.Build();
 
