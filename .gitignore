@@ -43,6 +43,7 @@ Desktop.ini
 
 ## Claude Code skill infrastructure (not application code)
 .agents/
+.claude/
 skills-lock.json
 
 ## Test results
