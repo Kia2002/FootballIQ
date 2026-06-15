@@ -1,6 +1,7 @@
 using FootballIQ.Application.Interfaces;
 using FootballIQ.Infrastructure.FootballData;
 using FootballIQ.Infrastructure.Persistence;
+using FootballIQ.WebAPI.Endpoints;
 using Microsoft.EntityFrameworkCore;
 using Polly;
 
@@ -13,6 +14,9 @@ var connectionString = builder.Configuration["POSTGRES_CONNECTION_STRING"]
 
 builder.Services.AddDbContext<FootballIQDbContext>(options =>
     options.UseNpgsql(connectionString));
+
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<FootballIQDbContext>();
 
 builder.Services.AddScoped<IPlayerRepository, PlayerRepository>();
 
@@ -35,5 +39,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.MapHealthChecks("/api/health");
+app.MapPlayerEndpoints();
 
 app.Run();

@@ -129,3 +129,25 @@ The one thing to add: if Domain referenced Application, you'd create a circular 
 **My answer:** It wouldn't retry the request since we don't have authorization and if we did retry it wouldn't change a single thing. Not sure what we'd see — probably an error or exception.
 
 **Verdict:** Correct on the "why" — `401` isn't transient (it's about the request itself, not a passing condition), so `AddTransientHttpErrorPolicy` (which only watches `5xx`/`408`/network exceptions) ignores it. Added detail on "what you'd see": `EnsureSuccessStatusCode()` throws `HttpRequestException` for any non-2xx status. With no error-handling middleware yet, an unhandled exception during a request becomes a raw `500 Internal Server Error` (full stack trace visible in Development mode) — this is exactly the "leaky error" problem that Task 6.2 (Problem Details middleware) will fix later.
+
+---
+
+## Task 1.7: GET /api/health + GET /api/players
+**What we built:** Two endpoints. `GET /api/health` via ASP.NET Core's built-in Health Checks middleware (`AddHealthChecks().AddDbContextCheck<FootballIQDbContext>()` + `MapHealthChecks("/api/health")`) — checks real DB connectivity, not just a hardcoded "OK". `GET /api/players` via a new `Endpoints/PlayerEndpoints.cs` file (extension method `MapPlayerEndpoints`), calling `IPlayerRepository.GetAllAsync()` and mapping each `Player` to a new `PlayerDto`.
+
+**Key concept: ASP.NET Core Health Checks.** `AddHealthChecks()` registers a system of pluggable checks; `AddDbContextCheck<T>()` adds one that runs a trivial query against the DB. `MapHealthChecks("/api/health")` exposes an endpoint returning `200 Healthy` or `503 Unhealthy` based on all registered checks — actually verifies the system works, not just that the process is alive. Needed an extra package (`Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore`, pinned to `9.0.4` — the `10.0.9` latest only targets net10.0).
+
+**Key concept: Endpoint extension methods.** Instead of growing `Program.cs` forever, each group of related routes lives in its own `static class` with an extension method on `IEndpointRouteBuilder` (e.g. `MapPlayerEndpoints`). `Program.cs` stays a short list of `app.MapXEndpoints()` calls as more layers add more routes.
+
+**Key concept: DTO mapping at the API boundary (entity → DTO).** Created `PlayerDto` (Id, Name, Position, Nationality, DateOfBirth, PreferredFoot) and mapped `Player` → `PlayerDto` with `.Select(...)` before returning. Two reasons: (1) don't leak the DB schema as the API contract — consumers shouldn't break when internal entities change; (2) avoid circular-reference serialization crashes — `Player.SeasonStats` is a list of `PlayerSeasonStats`, and each `PlayerSeasonStats.Player` points back to the parent, so serializing `Player` directly with that collection populated would throw `JsonException: A possible object cycle was detected`. Not a problem *yet* (DB is empty, `GetAllAsync` doesn't `.Include()` the collection), but would become one the moment Layer 2 ingestion populates `SeasonStats`.
+
+**Decision: deferred Swagger UI to Task 6.3.** `AddOpenApi()`/`MapOpenApi()` (the .NET 9 default) only serves the raw OpenAPI JSON at `/openapi/v1.json` — no interactive UI (Swashbuckle/Swagger UI isn't included by default anymore). Verified both endpoints return `200 OK` via curl instead. Also noted: `/api/health` doesn't appear in the OpenAPI document at all — `MapHealthChecks()` doesn't add OpenAPI metadata by default, and health endpoints are conventionally excluded from API docs anyway (they're for infra tooling, not API consumers).
+
+**Why it matters:** Health checks are what load balancers/orchestrators poll to decide if your instance should receive traffic. The endpoint-extension-method pattern keeps the API host file readable as the project grows across 4+ layers. The entity/DTO separation is a foundational boundary that gets more important every time a new relationship is added to the domain model.
+
+### Comprehension Check
+**Q:** We mapped `Player` → `PlayerDto` inside the `/api/players` handler instead of returning `players` directly from `Results.Ok(players)`. In your own words, what are the two problems this avoids?
+
+**My answer:** We choose what we want to show to the user — they don't need to see all the data we persist in the DB. (Second reason: didn't know.)
+
+**Verdict:** First reason correct (control the API contract, decouple from DB schema). Second reason added: circular reference serialization crash — `Player.SeasonStats` → `PlayerSeasonStats.Player` → back to the same `Player` forms a cycle that `System.Text.Json` detects and throws on (`JsonException: A possible object cycle was detected`). `PlayerDto` has only scalar fields, so there's no graph to traverse. This isn't triggered yet (empty DB, no `.Include()`), but would break the moment Layer 2 ingestion populates `SeasonStats`.
