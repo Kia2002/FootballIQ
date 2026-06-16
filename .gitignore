@@ -46,6 +46,10 @@ Desktop.ini
 .claude/
 skills-lock.json
 
+## Project-internal docs (not for GitHub)
+CLAUDE.md
+LEARNING.md
+
 ## Test results
 TestResults/
 coverage/
