@@ -27,7 +27,7 @@ It answers football scouting queries like _"find a left-back under 23 with 85%+ 
 - A live deployed URL with a README containing real accuracy numbers
 
 **Live URL:** _(add after Layer 6 deploy)_
-**GitHub repo:** _(add after Layer 1 setup)_
+**GitHub repo:** https://github.com/Kia2002/FootballIQ
 
 ---
 
@@ -136,9 +136,9 @@ _What you learn: Clean Architecture structure, EF Core, Testcontainers, GitHub A
 | 1.5 | IPlayerRepository interface + PlayerRepository | Interface defined. Implementation compiles. | ✅ |
 | 1.6 | football-data.org typed HTTP client + Polly retry | Can fetch and deserialize a fixture list from real API | ✅ |
 | 1.7 | GET /api/health + GET /api/players endpoints | Both return 200 OK in Swagger UI | ✅ |
-| 1.8 | Domain unit tests (5+ assertions) | `dotnet test FootballIQ.Domain.Tests` all pass | 🔲 |
-| 1.9 | Testcontainers integration test: create + read player | Test creates real DB, passes, container stops cleanly | 🔲 |
-| 1.10 | GitHub repo + Actions CI (build + test on push) | Push triggers green CI workflow | 🔲 |
+| 1.8 | Domain unit tests (5+ assertions) | `dotnet test FootballIQ.Domain.Tests` all pass | ✅ |
+| 1.9 | Testcontainers integration test: create + read player | Test creates real DB, passes, container stops cleanly | ✅ |
+| 1.10 | GitHub repo + Actions CI (build + test on push) | Push triggers green CI workflow | ✅ |
 
 ### Layer 2: StatsBomb Data Ingestion
 _What we build: Real player data in the database_

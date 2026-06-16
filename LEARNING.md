@@ -192,3 +192,18 @@ The one thing to add: if Domain referenced Application, you'd create a circular 
 **What Testcontainers does under the hood:** It starts a `ryuk` helper container first (a cleanup watchdog — if your test process crashes mid-run, ryuk removes any orphaned containers). Then it starts the PostgreSQL container, runs `pg_isready` on a loop until the database accepts connections, and signals that setup is complete. After `DisposeAsync`, the container is deleted immediately.
 
 **Why it matters:** This is the industry standard for .NET integration tests. The alternative — mocking the database or using `UseInMemoryDatabase()` — lets tests pass while the real code is broken (a real incident pattern on production teams). Testcontainers gives you a real database with zero permanent infrastructure: every test run starts clean.
+
+---
+
+## Task 1.10: GitHub Repo + Actions CI
+**What we built:** Created the GitHub repository at `github.com/Kia2002/FootballIQ`, cleaned Co-Authored-By lines from all existing commits using `git filter-branch`, and wrote `.github/workflows/ci.yml` — a GitHub Actions workflow that runs `dotnet restore`, `dotnet build`, and `dotnet test` automatically on every push. First CI run passed green in 50 seconds, including the Testcontainers tests running against real Docker PostgreSQL on GitHub's servers.
+
+**Key concept: GitHub Actions.** A CI/CD system built into GitHub. You write a YAML file describing a *workflow*: what event triggers it (e.g. a push to any branch), what machine to run it on (`ubuntu-latest`), and what steps to run. GitHub executes it on their infrastructure — you don't configure any servers.
+
+**Key concept: CI (Continuous Integration).** Every push triggers a full build and test run automatically. If something breaks, GitHub shows a red X on the commit before anyone can merge it. This is the safety net that makes a team confident when merging — broken code is caught immediately, not discovered days later in production.
+
+**Key concept: `git filter-branch --msg-filter`.** Rewrites every commit's message by piping it through a shell command. We used a Perl one-liner to strip the `Co-Authored-By:` trailer from all commits before the first push, since rewriting history is safe when no remote exists yet. After a push, rewriting history requires a force-push and causes problems for anyone who already cloned — so this is a now-or-never operation.
+
+**Why the workflow has these exact steps in order:** `restore` must happen before `build` (downloads packages); `build` must happen before `test` (`--no-build` skips recompiling in the test step, saving time). Running `--configuration Release` in both build and test ensures the code being tested matches what would be deployed.
+
+**Why Testcontainers worked in CI without extra setup:** GitHub's `ubuntu-latest` runners have Docker pre-installed. Testcontainers just needs a Docker daemon — it doesn't matter whether it's local or on a CI VM. The PostgreSQL container starts, runs, and is cleaned up exactly the same way as on your local machine.
