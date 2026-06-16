@@ -27,6 +27,10 @@ public class PlayerSeasonStats
 
     public DateTime LastUpdatedAt { get; set; }
 
+    /// <summary>Pass completion percentage (0–100). Returns 0 when no passes have been attempted.</summary>
+    public double PassAccuracy =>
+        PassesAttempted > 0 ? (double)PassesCompleted / PassesAttempted * 100 : 0;
+
     // Populated by EF Core when loaded with Include(); not set directly by application code.
     public Player Player { get; set; } = null!;
     public Club Club { get; set; } = null!;
