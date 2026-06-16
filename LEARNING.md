@@ -151,3 +151,44 @@ The one thing to add: if Domain referenced Application, you'd create a circular 
 **My answer:** We choose what we want to show to the user — they don't need to see all the data we persist in the DB. (Second reason: didn't know.)
 
 **Verdict:** First reason correct (control the API contract, decouple from DB schema). Second reason added: circular reference serialization crash — `Player.SeasonStats` → `PlayerSeasonStats.Player` → back to the same `Player` forms a cycle that `System.Text.Json` detects and throws on (`JsonException: A possible object cycle was detected`). `PlayerDto` has only scalar fields, so there's no graph to traverse. This isn't triggered yet (empty DB, no `.Include()`), but would break the moment Layer 2 ingestion populates `SeasonStats`.
+
+---
+
+## Task 1.8: Domain Unit Tests
+**What we built:** Added a `PassAccuracy` computed property to `PlayerSeasonStats` and wrote 8 unit tests across 3 files (`PlayerNotFoundExceptionTests.cs`, `PlayerSeasonStatsTests.cs`, `PlayerTests.cs`). Deleted the placeholder `UnitTest1.cs`. All 8 tests pass.
+
+**Key concept: Unit testing.** A unit test calls your real code with known inputs and checks that the output is what you expected — like a quality control machine. The word "unit" means one small thing in isolation: one class, one method, no database, no network.
+
+**Key concept: xUnit test structure.** Every test method gets a `[Fact]` attribute (marks it for xUnit to find and run). Inside the method, the pattern is: *Arrange* (set up data), *Act* (call the thing), *Assert* (check the result). The `Assert` class provides helpers: `Assert.Equal`, `Assert.NotNull`, `Assert.Empty`, `Assert.Contains`, `Assert.ThrowsAsync`, etc.
+
+**Key concept: Test naming convention (`Method_Scenario_Expected`).** When a test fails in CI you only see the name — not the code. `PassAccuracy_WhenNoPassesAttempted_ReturnsZero` tells you what broke, under what condition, and what was supposed to happen. `Test3` tells you nothing.
+
+**Key concept: One test = one failure reason.** Each edge case gets its own test method. If you put two scenarios in one test and it fails, you don't know which scenario caused it. Separate tests mean a failure is always unambiguous — and each test name documents an intentional decision about the code's behaviour.
+
+**Why `PassAccuracy` belongs in the domain:** It's a calculation derived entirely from domain data (`PassesCompleted / PassesAttempted`). The domain should own this — not a handler, not an endpoint. If a caller needs pass accuracy, the entity should expose it. The `> 0` guard is an edge case the domain is responsible for handling cleanly.
+
+**Why it matters:** Unit tests are the safety net for the domain layer. They catch regressions — if someone accidentally deletes the division-by-zero guard in six months, the `PassAccuracy_WhenNoPassesAttempted_ReturnsZero` test will fail immediately and point directly at the bug.
+
+### Comprehension Check
+**Q:** In `Player_SeasonStats_DefaultsToEmptyCollection` we assert both `Assert.NotNull` and `Assert.Empty`. Why do we need both — and what different bug would each one catch?
+
+**My answer:** It's not the same if the list is empty or null. If it's null it doesn't exist, if it's empty he didn't play that season maybe.
+
+**Verdict:** Correct — the domain intuition ("didn't play that season") is right for the empty case. Sharpened for code: `Assert.NotNull` catches a coding bug — if `SeasonStats` were `null`, any code that loops over it would throw a `NullReferenceException` (a crash). The property is initialized to `new List<PlayerSeasonStats>()` specifically to prevent this; the test proves that initialization is still in place. `Assert.Empty` catches the wrong default state — a freshly created `Player` should have no seasons recorded yet; if it came pre-filled with data, something in the initialization logic is wrong. Two assertions, two completely different categories of bug.
+
+---
+
+## Task 1.9: Testcontainers Integration Test
+**What we built:** Added `Testcontainers.PostgreSql` package to `FootballIQ.Infrastructure.Tests`, wrote `PlayerRepositoryTests.cs` with two tests: one that saves and retrieves a player (round-trip test), and one that confirms `PlayerNotFoundException` is thrown for a non-existent ID. Both tests run against a real PostgreSQL container that starts and stops automatically.
+
+**Key concept: Integration test vs unit test.** Unit tests test isolated logic (no DB, no network). Integration tests verify that two or more components work *together* — in this case, `PlayerRepository` + EF Core + a real PostgreSQL database. The distinction matters because EF Core can silently behave differently against real Postgres vs. a fake (pgvector queries, tsvector, JSON operators all fail against the in-memory provider but pass compilation).
+
+**Key concept: Testcontainers.** A library that starts a real Docker container (any image — PostgreSQL, Redis, etc.) from inside a test, runs the test against it, then stops and removes the container when the test ends. No manual setup needed, no shared dev database that can have leftover data from a previous run.
+
+**Key concept: `IAsyncLifetime` (xUnit).** An interface with two async methods: `InitializeAsync` runs before the first test in the class, `DisposeAsync` runs after the last. This is how you do async setup/teardown — start the container and call `MigrateAsync()` in `InitializeAsync`, stop and dispose the container in `DisposeAsync`.
+
+**Key concept: `MigrateAsync()`.** Applies all pending EF Core migrations to the fresh test database before the tests run. Without this, the tables don't exist and every test fails with a "relation does not exist" error.
+
+**What Testcontainers does under the hood:** It starts a `ryuk` helper container first (a cleanup watchdog — if your test process crashes mid-run, ryuk removes any orphaned containers). Then it starts the PostgreSQL container, runs `pg_isready` on a loop until the database accepts connections, and signals that setup is complete. After `DisposeAsync`, the container is deleted immediately.
+
+**Why it matters:** This is the industry standard for .NET integration tests. The alternative — mocking the database or using `UseInMemoryDatabase()` — lets tests pass while the real code is broken (a real incident pattern on production teams). Testcontainers gives you a real database with zero permanent infrastructure: every test run starts clean.
