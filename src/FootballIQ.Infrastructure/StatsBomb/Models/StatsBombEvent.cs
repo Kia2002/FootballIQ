@@ -75,6 +75,14 @@ public record StatsBombPassData
     /// <summary>Present only for an incomplete pass (e.g. "Incomplete", "Out", "Pass Offside"). Absent means completed.</summary>
     [JsonPropertyName("outcome")]
     public StatsBombNamedId? Outcome { get; init; }
+
+    /// <summary>True if this pass directly created a shot. Pairs with <see cref="AssistedShotId"/> to credit xA.</summary>
+    [JsonPropertyName("shot_assist")]
+    public bool ShotAssist { get; init; }
+
+    /// <summary>The <see cref="StatsBombEvent.Id"/> of the shot this pass assisted, when <see cref="ShotAssist"/> is true.</summary>
+    [JsonPropertyName("assisted_shot_id")]
+    public string? AssistedShotId { get; init; }
 }
 
 public record StatsBombShotData
