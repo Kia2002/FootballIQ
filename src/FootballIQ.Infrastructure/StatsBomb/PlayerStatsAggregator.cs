@@ -46,10 +46,12 @@ public class PlayerStatsAggregator
                 {
                     PlayerId = group.Key.Id,
                     PlayerName = group.Key.Name,
-                    PassCompletionPct = totalPasses == 0 ? 0 : (double)completedPasses / totalPasses,
+                    PassesCompleted = completedPasses,
+                    PassesAttempted = totalPasses,
                     TotalXg = totalXg,
                     TotalXa = totalXa,
-                    PressuresPer90 = minutesPlayed == 0 ? 0 : totalPressures / (minutesPlayed / 90.0)
+                    Pressures = totalPressures,
+                    MinutesPlayed = minutesPlayed
                 };
             })
             .ToList();

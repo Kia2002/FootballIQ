@@ -7,11 +7,21 @@ public record PlayerAggregateStats
 
     public string PlayerName { get; init; } = string.Empty;
 
-    public double PassCompletionPct { get; init; }
+    public int PassesCompleted { get; init; }
+
+    public int PassesAttempted { get; init; }
 
     public double TotalXg { get; init; }
 
     public double TotalXa { get; init; }
 
-    public double PressuresPer90 { get; init; }
+    public int Pressures { get; init; }
+
+    public double MinutesPlayed { get; init; }
+
+    public double PassCompletionPct =>
+        PassesAttempted == 0 ? 0 : (double)PassesCompleted / PassesAttempted;
+
+    public double PressuresPer90 =>
+        MinutesPlayed == 0 ? 0 : Pressures / (MinutesPlayed / 90.0);
 }
