@@ -1,5 +1,6 @@
 using FootballIQ.Application.Interfaces;
 using FootballIQ.Infrastructure.BackgroundServices;
+using FootballIQ.Infrastructure.Enrichment;
 using FootballIQ.Infrastructure.FootballData;
 using FootballIQ.Infrastructure.Persistence;
 using FootballIQ.Infrastructure.StatsBomb;
@@ -32,6 +33,13 @@ builder.Services.AddScoped<IStatsBombIngestionService, StatsBombIngestionService
 builder.Services.AddSingleton<IngestionWorkQueue>();
 builder.Services.AddSingleton<IIngestionQueue>(sp => sp.GetRequiredService<IngestionWorkQueue>());
 builder.Services.AddHostedService<DataIngestionBackgroundService>();
+
+builder.Services.AddHttpClient<IWikidataClient, WikidataClient>();
+builder.Services.AddScoped<IPlayerEnrichmentService, WikidataEnrichmentService>();
+
+builder.Services.AddSingleton<EnrichmentWorkQueue>();
+builder.Services.AddSingleton<IEnrichmentQueue>(sp => sp.GetRequiredService<EnrichmentWorkQueue>());
+builder.Services.AddHostedService<PlayerDemographicsBackgroundService>();
 
 var footballDataApiKey = builder.Configuration["FOOTBALLDATA_API_KEY"]
     ?? throw new InvalidOperationException("FOOTBALLDATA_API_KEY is not configured.");

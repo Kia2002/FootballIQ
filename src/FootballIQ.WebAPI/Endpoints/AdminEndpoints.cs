@@ -12,6 +12,12 @@ public static class AdminEndpoints
             await queue.EnqueueAsync(request.CompetitionId, request.SeasonId, ct);
             return Results.Accepted();
         });
+
+        app.MapPost("/api/admin/enrich-players", async (IEnrichmentQueue queue, CancellationToken ct) =>
+        {
+            await queue.EnqueueAsync(ct);
+            return Results.Accepted();
+        });
     }
 
     public record IngestRequest(int CompetitionId, int SeasonId);
