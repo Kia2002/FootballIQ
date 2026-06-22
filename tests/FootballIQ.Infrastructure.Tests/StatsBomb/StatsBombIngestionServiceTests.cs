@@ -66,4 +66,25 @@ public class StatsBombIngestionServiceTests : IAsyncLifetime
         Assert.Equal(1, seasonStats.PassesAttempted);
         Assert.Equal(1, seasonStats.PassesCompleted);
     }
+
+    [Fact]
+    public async Task IngestSeasonAsync_WithOneMatch_PersistsPlayerStatsInExpectedRange()
+    {
+        var ingestedCount = await _service.IngestSeasonAsync(competitionId: 11, seasonId: 90, CancellationToken.None);
+
+        Assert.Equal(1, ingestedCount);
+
+        var homePlayer = await _context.Players.SingleAsync(p => p.StatsBombPlayerId == FakeStatsBombReader.HomePlayerId);
+        var homeStats = await _context.PlayerSeasonStats.SingleAsync(s => s.PlayerId == homePlayer.Id);
+
+        Assert.Equal(1, homeStats.PassesAttempted);
+        Assert.Equal(1, homeStats.PassesCompleted);
+        Assert.Equal(100.0, homeStats.PassAccuracy);
+
+        var awayPlayer = await _context.Players.SingleAsync(p => p.StatsBombPlayerId == FakeStatsBombReader.AwayPlayerId);
+        var awayStats = await _context.PlayerSeasonStats.SingleAsync(s => s.PlayerId == awayPlayer.Id);
+
+        Assert.Equal(0, awayStats.PassesAttempted);
+        Assert.InRange(awayStats.ExpectedGoals, 0.24, 0.26);
+    }
 }
