@@ -82,6 +82,30 @@ A single football match between two clubs, identified by its StatsBomb match ID.
 
 ---
 
+## Player position assignment (bug fix, post-Layer-2)
+
+`Player.Position` was originally never set during ingestion — `GetOrCreatePlayerAsync` just left it at the C# default for the enum, which is its first declared member, `Goalkeeper` (`= 0`). The result: every ingested player silently showed up as a `Goalkeeper` regardless of their actual role. This went unnoticed until manually inspecting the database.
+
+**The fix:** StatsBomb's lineup JSON already includes a `positions` array per player (e.g. `"Right Center Back"`, `"Center Forward"`), with one entry per position the player occupied during that match. `StatsBombPositionMapper` translates each of StatsBomb's 25 granular labels down to our 7-value `Position` enum (e.g. `"Right Center Back"` and `"Left Center Back"` both map to `CentreBack`).
+
+**A player can be listed at more than one position** — across different matches, or even within one match if subbed into a different role. Since `Player.Position` holds a single value, we need a rule: **whichever mapped position occurs most often across all of a player's lineup appearances wins.** This is tracked via a new `player_position_counts` table (`PlayerId`, `Position`, `Count`) — every time a match is ingested, each player's position entries for that match are mapped and added to their running counts, and `Player.Position` is recomputed as whichever bucket currently has the highest count.
+
+**Why a separate table instead of recomputing from raw files each time:** matches already in `IngestionLog` are skipped entirely on re-ingestion (including their lineup data) — there's no other durable place to accumulate a count across matches without re-reading already-ingested files.
+
+```mermaid
+erDiagram
+    PLAYER ||--o{ PLAYER_POSITION_COUNTS : "has tally rows"
+
+    PLAYER_POSITION_COUNTS {
+        guid Id
+        guid PlayerId
+        string Position
+        int Count
+    }
+```
+
+---
+
 ## Relationships
 
 - **`Player` 1 → many `PlayerSeasonStats`** (`Player.SeasonStats`), `OnDelete: Cascade` — deleting a player deletes their stats rows.

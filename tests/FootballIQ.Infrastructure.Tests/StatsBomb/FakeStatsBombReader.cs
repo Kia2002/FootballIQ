@@ -61,7 +61,17 @@ public class FakeStatsBombReader : IStatsBombReader
                 TeamName = "Home FC",
                 Lineup = new List<StatsBombLineupPlayer>
                 {
-                    new() { PlayerId = HomePlayerId, PlayerName = "Home Player" }
+                    new()
+                    {
+                        PlayerId = HomePlayerId,
+                        PlayerName = "Home Player",
+                        Positions = new List<StatsBombPlayerPosition>
+                        {
+                            new() { Position = "Right Back", From = "00:00:00" },
+                            new() { Position = "Center Back", From = "30:00:00" },
+                            new() { Position = "Right Back", From = "60:00:00" }
+                        }
+                    }
                 }
             },
             new()
@@ -70,7 +80,15 @@ public class FakeStatsBombReader : IStatsBombReader
                 TeamName = "Away FC",
                 Lineup = new List<StatsBombLineupPlayer>
                 {
-                    new() { PlayerId = AwayPlayerId, PlayerName = "Away Player" }
+                    new()
+                    {
+                        PlayerId = AwayPlayerId,
+                        PlayerName = "Away Player",
+                        Positions = new List<StatsBombPlayerPosition>
+                        {
+                            new() { Position = "Center Forward", From = "00:00:00" }
+                        }
+                    }
                 }
             }
         });
