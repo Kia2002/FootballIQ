@@ -4,11 +4,16 @@ using FootballIQ.Infrastructure.Enrichment.Models;
 
 namespace FootballIQ.Infrastructure.Enrichment;
 
-/// <summary>Decides whether a set of Wikidata candidates confidently identifies one player, using the club we already know them by as the disambiguator. Never guesses: zero or multiple club-matching candidates both return null.</summary>
+/// <summary>Decides whether a set of Wikidata candidates confidently identifies one player, using the club we already know them by as the disambiguator. A single candidate is trusted outright - Wikidata's club history is often stale (missing a recent transfer/loan), and StatsBomb's full legal names make a wrong-person collision rare. With multiple candidates, the known club must match exactly one; otherwise it's a guess and returns null.</summary>
 public static class PlayerDemographicsMatcher
 {
     public static DateTime? FindConfidentBirthDate(string targetClubName, IReadOnlyList<WikidataPersonResult> candidates)
     {
+        if (candidates.Count == 1)
+        {
+            return candidates[0].BirthDate;
+        }
+
         var normalizedTarget = Normalize(targetClubName);
 
         var matches = candidates
@@ -21,7 +26,10 @@ public static class PlayerDemographicsMatcher
     private static bool ClubsMatch(string normalizedTarget, string candidateClub)
     {
         var normalizedCandidate = Normalize(candidateClub);
-        return normalizedCandidate.Contains(normalizedTarget) || normalizedTarget.Contains(normalizedCandidate);
+        var targetTokens = normalizedTarget.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var candidateTokens = normalizedCandidate.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+
+        return targetTokens.Length > 0 && targetTokens.All(candidateTokens.Contains);
     }
 
     private static string Normalize(string value)
