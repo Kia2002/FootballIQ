@@ -12,6 +12,11 @@ public class WikidataClient : IWikidataClient
     public WikidataClient(HttpClient httpClient)
     {
         _httpClient = httpClient;
+
+        if (_httpClient.DefaultRequestHeaders.UserAgent.Count == 0)
+        {
+            _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("FootballIQ-Scout/1.0 (https://github.com/Kia2002/FootballIQ)");
+        }
     }
 
     public async Task<Dictionary<string, List<WikidataPersonResult>>> SearchByNamesAsync(IReadOnlyList<string> names, CancellationToken ct)
