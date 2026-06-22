@@ -58,11 +58,27 @@ A single football match between two clubs, identified by its StatsBomb match ID.
 
 ---
 
-## StatsBomb data-availability caveat
+## Player demographic enrichment (Task 2.8)
 
-`Player.DateOfBirth` and `Player.PreferredFoot` are nullable **on purpose**. StatsBomb's open-data lineup/player JSON does not include date of birth or footedness — only name, nationality, jersey number, and positions played. These columns will remain `null` after Layer 2 ingestion until a future enrichment source is added (e.g. a small manually curated dataset for notable players).
+`Player.DateOfBirth` and `Player.PreferredFoot` are nullable because StatsBomb's open-data lineup/player JSON doesn't include either field — only name, nationality, jersey number, and positions played. After StatsBomb ingestion alone, both columns are always `null`.
 
-This is a deliberate "model the field now, populate it later" decision, not a bug. Don't be surprised when these columns are empty after ingestion.
+**`DateOfBirth` is filled in by a separate enrichment step, run after ingestion, using Wikidata.** `PreferredFoot` stays `null` — Wikidata's footedness coverage is too sparse to be worth the same effort, and it's a lower-priority scouting signal than age.
+
+**Why Wikidata:** free, no API key, and strong coverage for professional footballers — unlike football-data.org (no squad/player endpoint exists in this codebase) or a hand-curated dataset (doesn't scale past a handful of notable players).
+
+**The ambiguity problem and how it's solved:** many players share a name (there are multiple "David Silva"s in football history). Matching by name alone risks silently assigning the wrong birth date. The fix: match by **name + known club** together, but only when there's more than one candidate to disambiguate. Every ingested player already has a club via `PlayerSeasonStats → Club`, so this disambiguator is free — no new data needed.
+
+- **Exactly one Wikidata candidate for the name → trust it outright**, even if its recorded club history doesn't mention the player's known club. Wikidata's club data is frequently stale (a loan or transfer the page was never updated for), and StatsBomb's full legal names make a same-name collision rare — so requiring a club match here mostly produced false negatives, not protection against false positives. A real-data sample of 15 unmatched players found 11/15 were exactly this case (e.g. Kenedy's Wikidata page never recorded his loan move to Granada).
+- **Multiple candidates → club match required.** With more than one same-named candidate, the known club is the only disambiguator available, so a name match is only accepted if exactly one candidate's club history matches; zero or multiple matches means skip rather than guess.
+- Club name comparison is **token-based, not substring-based** — e.g. our DB's `"Celta Vigo"` matches Wikidata's `"RC Celta de Vigo"` because every word in the first appears in the second, regardless of extra words in between.
+
+**Lookup mechanism:** a two-step process, because SPARQL (Wikidata's query language) can't reliably fuzzy-match name strings, only exact entity IDs:
+1. **Fuzzy name search** — one `wbsearchentities` API call per player name, returning a handful of candidate entity IDs (QIDs).
+2. **Batched fact lookup** — one SPARQL query per batch of players, listing every candidate QID collected in that batch via a `VALUES` clause, fetching birth date (`P569`) and club history (`P54`) for all of them at once. This is the expensive part to avoid repeating per-player.
+
+**Idempotent by construction:** enrichment only ever targets players where `DateOfBirth IS NULL`. No ledger table is needed (unlike `IngestionLog` for StatsBomb ingestion) — running it twice is naturally a no-op for already-enriched players.
+
+**Trigger:** a separate step from StatsBomb ingestion, not automatic — `POST /api/admin/enrich-players` queues a background job (same `Channel`-backed pattern as `/api/admin/ingest`).
 
 ---
 
@@ -141,4 +157,4 @@ erDiagram
 
 - **Composite uniqueness on `PlayerSeasonStats`** (`PlayerId` + `ClubId` + `CompetitionId` + `SeasonId`) — not enforced yet. Revisit in Layer 2 when ingestion idempotency for stats rows is implemented.
 - **Snake_case columns** via `EFCore.NamingConventions` — currently deferred; columns are PascalCase. Revisit if desired, but requires adding a new package and would rename every column in a follow-up migration.
-- **`DateOfBirth` / `PreferredFoot` enrichment — tracked as Task 2.8.** Currently always `null` after ingestion (StatsBomb doesn't provide them). Age is one of the most important scouting signals, so this is **not optional long-term** — a data source must be chosen during Layer 2. Candidates discussed: Wikidata SPARQL lookup by player name (free, no API key, good coverage for pro footballers, but fuzzy name matching), football-data.org squads (already in the stack, but historical coverage for 2020/21 players may be patchy), or a curated open dataset joined by name. Decision deferred to when Layer 2 ingestion is actually being built.
+- **`PreferredFoot` remains unenriched.** Task 2.8 only solved `DateOfBirth`. Wikidata's footedness coverage is sparse enough that it wasn't worth pursuing in the same pass — revisit if a query ever needs it.
