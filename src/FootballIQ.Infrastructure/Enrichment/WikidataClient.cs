@@ -56,7 +56,8 @@ public class WikidataClient : IWikidataClient
             SELECT ?entity ?birthDate ?clubLabel WHERE {{
               VALUES ?entity {{ {valuesClause} }}
               ?entity wdt:P569 ?birthDate.
-              ?entity wdt:P54 ?club.
+              ?entity p:P54 ?clubStatement.
+              ?clubStatement ps:P54 ?club.
               ?club rdfs:label ?clubLabel.
               FILTER(LANG(?clubLabel) = 'en')
             }}";
