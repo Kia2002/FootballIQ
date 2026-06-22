@@ -34,7 +34,10 @@ builder.Services.AddSingleton<IngestionWorkQueue>();
 builder.Services.AddSingleton<IIngestionQueue>(sp => sp.GetRequiredService<IngestionWorkQueue>());
 builder.Services.AddHostedService<DataIngestionBackgroundService>();
 
-builder.Services.AddHttpClient<IWikidataClient, WikidataClient>();
+builder.Services.AddHttpClient<IWikidataClient, WikidataClient>()
+    .AddTransientHttpErrorPolicy(policyBuilder => policyBuilder
+        .OrResult(response => response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+        .WaitAndRetryAsync(5, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt))));
 builder.Services.AddScoped<IPlayerEnrichmentService, WikidataEnrichmentService>();
 
 builder.Services.AddSingleton<EnrichmentWorkQueue>();
