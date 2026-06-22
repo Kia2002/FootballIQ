@@ -1,3 +1,4 @@
+using FootballIQ.Domain.Enums;
 using FootballIQ.Infrastructure.Persistence;
 using FootballIQ.Infrastructure.StatsBomb;
 using Microsoft.EntityFrameworkCore;
@@ -86,5 +87,18 @@ public class StatsBombIngestionServiceTests : IAsyncLifetime
 
         Assert.Equal(0, awayStats.PassesAttempted);
         Assert.InRange(awayStats.ExpectedGoals, 0.24, 0.26);
+    }
+
+    [Fact]
+    public async Task IngestSeasonAsync_SetsPlayerPositionFromLineupData_UsingMostFrequentPosition()
+    {
+        await _service.IngestSeasonAsync(competitionId: 11, seasonId: 90, CancellationToken.None);
+
+        var homePlayer = await _context.Players.SingleAsync(p => p.StatsBombPlayerId == FakeStatsBombReader.HomePlayerId);
+        var awayPlayer = await _context.Players.SingleAsync(p => p.StatsBombPlayerId == FakeStatsBombReader.AwayPlayerId);
+
+        // Home player is listed at Right Back twice and Center Back once - Right Back should win.
+        Assert.Equal(Position.RightBack, homePlayer.Position);
+        Assert.Equal(Position.Striker, awayPlayer.Position);
     }
 }

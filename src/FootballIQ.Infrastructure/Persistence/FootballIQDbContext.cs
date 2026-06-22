@@ -15,6 +15,7 @@ public class FootballIQDbContext : DbContext
     public DbSet<PlayerSeasonStats> PlayerSeasonStats => Set<PlayerSeasonStats>();
     public DbSet<Match> Matches => Set<Match>();
     public DbSet<IngestionLog> IngestionLogs => Set<IngestionLog>();
+    public DbSet<PlayerPositionTally> PlayerPositionTallies => Set<PlayerPositionTally>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -67,6 +67,10 @@ public class StatsBombIngestionService : IStatsBombIngestionService
             .SelectMany(team => team.Lineup.Select(p => (p.PlayerId, ClubId: team.TeamId == match.HomeTeam.HomeTeamId ? homeClub.Id : awayClub.Id)))
             .ToDictionary(x => x.PlayerId, x => x.ClubId);
 
+        var positionsByStatsBombPlayerId = lineups
+            .SelectMany(team => team.Lineup)
+            .ToDictionary(p => p.PlayerId, p => p.Positions.Select(pos => pos.Position).ToList());
+
         var playerStats = _aggregator.ComputeStats(events, lineups);
 
         foreach (var stats in playerStats)
@@ -78,6 +82,11 @@ public class StatsBombIngestionService : IStatsBombIngestionService
 
             var player = await GetOrCreatePlayerAsync(stats.PlayerId, stats.PlayerName, ct);
             await UpsertSeasonStatsAsync(player.Id, clubId, competitionId, seasonId, stats, ct);
+
+            if (positionsByStatsBombPlayerId.TryGetValue(stats.PlayerId, out var statsBombPositions))
+            {
+                await UpdatePositionTallyAsync(player, statsBombPositions, ct);
+            }
         }
 
         _context.IngestionLogs.Add(new IngestionLog
@@ -101,6 +110,34 @@ public class StatsBombIngestionService : IStatsBombIngestionService
         club = new Club { Id = Guid.NewGuid(), StatsBombTeamId = statsBombTeamId, Name = name };
         _context.Clubs.Add(club);
         return club;
+    }
+
+    private async Task UpdatePositionTallyAsync(Player player, List<string> statsBombPositions, CancellationToken ct)
+    {
+        var increments = statsBombPositions
+            .Select(StatsBombPositionMapper.Map)
+            .GroupBy(position => position)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var tallies = await _context.PlayerPositionTallies
+            .Where(t => t.PlayerId == player.Id)
+            .ToListAsync(ct);
+
+        foreach (var (position, increment) in increments)
+        {
+            var tally = tallies.FirstOrDefault(t => t.Position == position);
+
+            if (tally is null)
+            {
+                tally = new PlayerPositionTally { Id = Guid.NewGuid(), PlayerId = player.Id, Position = position };
+                _context.PlayerPositionTallies.Add(tally);
+                tallies.Add(tally);
+            }
+
+            tally.Count += increment;
+        }
+
+        player.Position = tallies.OrderByDescending(t => t.Count).First().Position;
     }
 
     private async Task<Player> GetOrCreatePlayerAsync(int statsBombPlayerId, string name, CancellationToken ct)
