@@ -1,6 +1,6 @@
 # Domain Model — Task 1.4
 
-Core entities for FootballIQ Scout: `Club`, `Player`, `PlayerSeasonStats`, `Match`.
+Core entities for FootballIQ Scout: `Club`, `Player`, `PlayerSeasonStats`, `Match`. Two supporting entities added later in Layer 2 — `IngestionLog` and `PlayerPositionTally` — are documented in their own sections below.
 
 ## Entities
 
@@ -44,6 +44,14 @@ A player's aggregated statistics for one club, competition, and season.
 
 **Why this is its own table, not columns on `Player`:** a player can play for multiple clubs across multiple seasons. Modeling stats as a one-to-many relationship (one player → many season-stat rows) gives us both club history and season-by-season progression "for free" — e.g. `player.SeasonStats.Select(s => s.Club)` for clubs played for, `player.SeasonStats.OrderBy(s => s.SeasonId)` for progression over time.
 
+**How `Goals`, `Assists`, `ExpectedGoals`, `ExpectedAssists` are actually computed** (in `PlayerStatsAggregator`, from raw StatsBomb event data — none of these are StatsBomb fields directly):
+- **`Goals`**: count of events where `Type.Name == "Shot"` and `Shot.Outcome.Name == "Goal"`.
+- **`Assists`**: count of `Pass` events where `Pass.ShotAssist == true`, `Pass.AssistedShotId` is set, **and** that referenced shot's outcome was a goal. (A "shot-assisting pass" that led to a saved or missed shot is not an assist.)
+- **`ExpectedGoals` (xG)**: sum of `Shot.StatsbombXg` across all of the player's shot events — StatsBomb's own model output, just accumulated per player.
+- **`ExpectedAssists` (xA)**: sum of `Shot.StatsbombXg` for every shot that was preceded by one of the player's `ShotAssist` passes — i.e. "how much xG did my key passes generate," independent of whether the shot actually scored.
+
+This is why `Assists` and `ExpectedAssists` can diverge for a player: `Assists` only counts passes whose shot **became a goal**; `ExpectedAssists` rewards good chance creation even when the shot was missed.
+
 ### Match
 A single football match between two clubs, identified by its StatsBomb match ID.
 
@@ -55,6 +63,20 @@ A single football match between two clubs, identified by its StatsBomb match ID.
 | `MatchDate` | `DateTime` | |
 | `HomeClubId`, `AwayClubId` | `Guid` | FK → `Club` (two separate FKs to the same table, no inverse navigation) |
 | `HomeScore`, `AwayScore` | `int` | |
+
+---
+
+## IngestionLog (Task 2.5)
+
+The idempotency ledger for StatsBomb ingestion — one row per match that has been fully ingested.
+
+| Field | Type | Notes |
+|---|---|---|
+| `Id` | `Guid` | Primary key |
+| `StatsBombMatchId` | `int` | Unique. The match this row marks as done |
+| `IngestedAt` | `DateTime` | When ingestion completed for this match |
+
+**Table name:** `ingestion_log`. **Why it exists:** `IngestSeasonAsync` checks this table (preloaded into a `HashSet<int>` once per season — see the N+1 fix in Layer 2 code review) to skip matches that were already ingested, so re-running ingestion for a season that's partly or fully done is a no-op for those matches rather than creating duplicate `PlayerSeasonStats` rows. A row is only inserted after a match's events, lineups, and stat aggregation all succeed — so a crash mid-match leaves no partial `IngestionLog` row, and that match is correctly retried on the next run.
 
 ---
 
@@ -88,7 +110,7 @@ A single football match between two clubs, identified by its StatsBomb match ID.
 
 **The fix:** StatsBomb's lineup JSON already includes a `positions` array per player (e.g. `"Right Center Back"`, `"Center Forward"`), with one entry per position the player occupied during that match. `StatsBombPositionMapper` translates each of StatsBomb's 25 granular labels down to our 7-value `Position` enum (e.g. `"Right Center Back"` and `"Left Center Back"` both map to `CentreBack`).
 
-**A player can be listed at more than one position** — across different matches, or even within one match if subbed into a different role. Since `Player.Position` holds a single value, we need a rule: **whichever mapped position occurs most often across all of a player's lineup appearances wins.** This is tracked via a new `player_position_counts` table (`PlayerId`, `Position`, `Count`) — every time a match is ingested, each player's position entries for that match are mapped and added to their running counts, and `Player.Position` is recomputed as whichever bucket currently has the highest count.
+**A player can be listed at more than one position** — across different matches, or even within one match if subbed into a different role. Since `Player.Position` holds a single value, we need a rule: **whichever mapped position occurs most often across all of a player's lineup appearances wins.** This is tracked via a new entity, `PlayerPositionTally` (table `player_position_counts`, columns `PlayerId`, `Position`, `Count`, with a composite unique index on `PlayerId`+`Position`) — every time a match is ingested, each player's position entries for that match are mapped and added to their running counts, and `Player.Position` is recomputed as whichever bucket currently has the highest count.
 
 **Why a separate table instead of recomputing from raw files each time:** matches already in `IngestionLog` are skipped entirely on re-ingestion (including their lineup data) — there's no other durable place to accumulate a count across matches without re-reading already-ingested files.
 
@@ -111,6 +133,8 @@ erDiagram
 - **`Player` 1 → many `PlayerSeasonStats`** (`Player.SeasonStats`), `OnDelete: Cascade` — deleting a player deletes their stats rows.
 - **`Club` 1 → many `PlayerSeasonStats`** (`Club.SeasonStats`), `OnDelete: Cascade` — deleting a club deletes its players' stats rows for that club.
 - **`Match` → `Club`, twice** (`HomeClubId`, `AwayClubId`), no inverse navigation, `OnDelete: Restrict` — a club can't be deleted while matches reference it; matches are historical records.
+- **`Player` 1 → many `PlayerPositionTally`** — running per-position counts used to compute `Player.Position` (see above). No cascade-delete note needed beyond the standard FK-to-`Player` cascade.
+- **`IngestionLog` has no FK to any other table** — it's a standalone ledger keyed only by `StatsBombMatchId`, not tied to `Match` (a match could fail aggregation after its row is created, or `Match` rows could be re-derived independently — keeping these decoupled avoids that edge case).
 
 ```mermaid
 erDiagram
@@ -118,6 +142,7 @@ erDiagram
     PLAYER ||--o{ PLAYER_SEASON_STATS : "has stats rows"
     CLUB ||--o{ MATCH : "is home club for"
     CLUB ||--o{ MATCH : "is away club for"
+    PLAYER ||--o{ PLAYER_POSITION_COUNTS : "has tally rows"
 
     CLUB {
         guid Id
@@ -161,7 +186,15 @@ erDiagram
         int HomeScore
         int AwayScore
     }
+    PLAYER_POSITION_COUNTS {
+        guid Id
+        guid PlayerId
+        string Position
+        int Count
+    }
 ```
+
+`IngestionLog` is omitted from this diagram since it has no FK relationships to diagram — see its own section above for its three columns.
 
 ---
 
@@ -170,8 +203,8 @@ erDiagram
 1. **EF configuration via `IEntityTypeConfiguration<T>`** — one configuration class per entity in `Infrastructure/Persistence/Configurations/`, wired via `modelBuilder.ApplyConfigurationsFromAssembly(...)`. Keeps `OnModelCreating` minimal and scales cleanly as entities are added.
 2. **Enums stored as strings** (`Position`, `Foot` via `.HasConversion<string>()`) — readable when inspecting the database directly (`"LeftBack"` instead of `2`), negligible cost at this scale.
 3. **Enums live in `Domain/Enums/`, not `Domain/ValueObjects/`** — a plain enum has no behavior/validation, so `Enums/` is more honest. `ValueObjects/` stays reserved for a future type like `Season` if it gains real validation logic. (Small deviation from the original CLAUDE.md folder sketch.)
-4. **Unique indexes on `StatsBombTeamId`, `StatsBombPlayerId`, `StatsBombMatchId`** — these are the idempotent-ingestion keys for Layer 2 (re-running ingestion shouldn't create duplicates).
-5. **Tables are snake_case via `ToTable(...)`** (`clubs`, `players`, `player_season_stats`, `matches`) — satisfies CLAUDE.md's stated convention with zero new packages.
+4. **Unique indexes on `StatsBombTeamId`, `StatsBombPlayerId`, `StatsBombMatchId`** — these are the idempotent-ingestion keys for Layer 2 (re-running ingestion shouldn't create duplicates). `IngestionLog.StatsBombMatchId` and the composite `(PlayerId, Position)` on `PlayerPositionTally` follow the same idempotency-key pattern.
+5. **Tables are snake_case via `ToTable(...)`** (`clubs`, `players`, `player_season_stats`, `matches`, `ingestion_log`, `player_position_counts`) — satisfies CLAUDE.md's stated convention with zero new packages.
 6. **Columns remain PascalCase** (EF Core default) — `EFCore.NamingConventions` would give snake_case columns too, but that's a new-package decision, deferred (see Open Items).
 7. **Delete behaviors**: `PlayerSeasonStats` → `Player`/`Club` = `Cascade` (stats are meaningless without their player/club); `Match` → `Club` (both FKs) = `Restrict` (don't silently erase match history if a club is deleted).
 
@@ -179,6 +212,7 @@ erDiagram
 
 ## Open items / future considerations
 
-- **Composite uniqueness on `PlayerSeasonStats`** (`PlayerId` + `ClubId` + `CompetitionId` + `SeasonId`) — not enforced yet. Revisit in Layer 2 when ingestion idempotency for stats rows is implemented.
+- **Composite uniqueness on `PlayerSeasonStats`** (`PlayerId` + `ClubId` + `CompetitionId` + `SeasonId`) — still not enforced as of the end of Layer 2. In practice this hasn't caused duplicate rows, because `IngestionLog` already prevents a match from being re-aggregated at all — but the DB itself has no constraint stopping a duplicate row if that ledger check were ever bypassed (e.g. a future bulk-import path that doesn't go through `IngestSeasonAsync`). Worth adding before Layer 3 changes how these rows are read.
 - **Snake_case columns** via `EFCore.NamingConventions` — currently deferred; columns are PascalCase. Revisit if desired, but requires adding a new package and would rename every column in a follow-up migration.
 - **`PreferredFoot` remains unenriched.** Task 2.8 only solved `DateOfBirth`. Wikidata's footedness coverage is sparse enough that it wasn't worth pursuing in the same pass — revisit if a query ever needs it.
+- **Migration history** (for traceability — chronological order): `20260609152401_InitialCreate` (empty placeholder) → `20260615134235_AddCoreDomainEntities` (Club/Player/Match/PlayerSeasonStats) → `20260619151937_AddIngestionLog` → `20260622164236_AddPlayerPositionCounts`.
