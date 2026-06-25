@@ -11,6 +11,10 @@ public record PlayerAggregateStats
 
     public int PassesAttempted { get; init; }
 
+    public int Goals { get; init; }
+
+    public int Assists { get; init; }
+
     public double TotalXg { get; init; }
 
     public double TotalXa { get; init; }

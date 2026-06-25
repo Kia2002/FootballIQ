@@ -14,6 +14,10 @@ public class PlayerStatsAggregator
             .Where(e => e.Type.Name == "Shot")
             .ToDictionary(e => e.Id, e => e.Shot?.StatsbombXg ?? 0);
 
+        var shotIsGoalById = events
+            .Where(e => e.Type.Name == "Shot")
+            .ToDictionary(e => e.Id, e => e.Shot?.Outcome?.Name == "Goal");
+
         var minutesPlayedByPlayerId = lineups
             .SelectMany(team => team.Lineup)
             .ToDictionary(
@@ -39,6 +43,13 @@ public class PlayerStatsAggregator
                     .Where(e => e.Pass?.ShotAssist == true && e.Pass.AssistedShotId is not null)
                     .Sum(e => shotXgById.GetValueOrDefault(e.Pass!.AssistedShotId!, 0));
 
+                var goals = group.Count(e => e.Type.Name == "Shot" && e.Shot?.Outcome?.Name == "Goal");
+
+                var assists = passes.Count(e =>
+                    e.Pass?.ShotAssist == true
+                    && e.Pass.AssistedShotId is not null
+                    && shotIsGoalById.GetValueOrDefault(e.Pass.AssistedShotId, false));
+
                 var totalPressures = group.Count(e => e.Type.Name == "Pressure");
                 var minutesPlayed = minutesPlayedByPlayerId.GetValueOrDefault(group.Key.Id, 0);
 
@@ -48,6 +59,8 @@ public class PlayerStatsAggregator
                     PlayerName = group.Key.Name,
                     PassesCompleted = completedPasses,
                     PassesAttempted = totalPasses,
+                    Goals = goals,
+                    Assists = assists,
                     TotalXg = totalXg,
                     TotalXa = totalXa,
                     Pressures = totalPressures,
