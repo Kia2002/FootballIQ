@@ -74,4 +74,41 @@ public class StatsBombReaderTests
         var barcelona = lineup.Single(t => t.TeamName == "Barcelona");
         Assert.Contains(barcelona.Lineup, p => p.PlayerName.Contains("Messi"));
     }
+
+    [Fact]
+    public async Task GetMatchesAsync_WhenFileMissing_ThrowsWithCompetitionAndSeasonContext()
+    {
+        var emptyDataRoot = Directory.CreateTempSubdirectory().FullName;
+        var reader = new StatsBombReader(emptyDataRoot);
+
+        var ex = await Assert.ThrowsAsync<FileNotFoundException>(
+            () => reader.GetMatchesAsync(competitionId: 11, seasonId: 90, CancellationToken.None));
+
+        Assert.Contains("competitionId=11", ex.Message);
+        Assert.Contains("seasonId=90", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetEventsAsync_WhenFileMissing_ThrowsWithMatchIdContext()
+    {
+        var emptyDataRoot = Directory.CreateTempSubdirectory().FullName;
+        var reader = new StatsBombReader(emptyDataRoot);
+
+        var ex = await Assert.ThrowsAsync<FileNotFoundException>(
+            () => reader.GetEventsAsync(matchId: 3773386, CancellationToken.None));
+
+        Assert.Contains("matchId=3773386", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetLineupAsync_WhenFileMissing_ThrowsWithMatchIdContext()
+    {
+        var emptyDataRoot = Directory.CreateTempSubdirectory().FullName;
+        var reader = new StatsBombReader(emptyDataRoot);
+
+        var ex = await Assert.ThrowsAsync<FileNotFoundException>(
+            () => reader.GetLineupAsync(matchId: 3773386, CancellationToken.None));
+
+        Assert.Contains("matchId=3773386", ex.Message);
+    }
 }
