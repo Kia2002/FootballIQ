@@ -23,32 +23,59 @@ public class StatsBombIngestionService : IStatsBombIngestionService
     public async Task<int> IngestSeasonAsync(int competitionId, int seasonId, CancellationToken ct)
     {
         var matches = await _reader.GetMatchesAsync(competitionId, seasonId, ct);
+
+        var alreadyIngestedMatchIds = (await _context.IngestionLogs
+                .Select(l => l.StatsBombMatchId)
+                .ToListAsync(ct))
+            .ToHashSet();
+
+        var clubsByStatsBombTeamId = await _context.Clubs
+            .ToDictionaryAsync(c => c.StatsBombTeamId, c => c, ct);
+
+        var playersByStatsBombPlayerId = await _context.Players
+            .ToDictionaryAsync(p => p.StatsBombPlayerId, p => p, ct);
+
+        var seasonStatsByPlayerAndClub = await _context.PlayerSeasonStats
+            .Where(s => s.CompetitionId == competitionId && s.SeasonId == seasonId)
+            .ToDictionaryAsync(s => (s.PlayerId, s.ClubId), s => s, ct);
+
+        var talliesByPlayerId = (await _context.PlayerPositionTallies.ToListAsync(ct))
+            .GroupBy(t => t.PlayerId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
         var ingestedCount = 0;
 
         foreach (var match in matches)
         {
-            var alreadyIngested = await _context.IngestionLogs
-                .AnyAsync(l => l.StatsBombMatchId == match.MatchId, ct);
-
-            if (alreadyIngested)
+            if (alreadyIngestedMatchIds.Contains(match.MatchId))
             {
                 continue;
             }
 
-            await IngestMatchAsync(match, competitionId, seasonId, ct);
+            await IngestMatchAsync(
+                match, competitionId, seasonId,
+                clubsByStatsBombTeamId, playersByStatsBombPlayerId, seasonStatsByPlayerAndClub, talliesByPlayerId, ct);
             ingestedCount++;
         }
 
         return ingestedCount;
     }
 
-    private async Task IngestMatchAsync(StatsBombMatch match, int competitionId, int seasonId, CancellationToken ct)
+    private async Task IngestMatchAsync(
+        StatsBombMatch match,
+        int competitionId,
+        int seasonId,
+        Dictionary<int, Club> clubsByStatsBombTeamId,
+        Dictionary<int, Player> playersByStatsBombPlayerId,
+        Dictionary<(Guid PlayerId, Guid ClubId), PlayerSeasonStats> seasonStatsByPlayerAndClub,
+        Dictionary<Guid, List<PlayerPositionTally>> talliesByPlayerId,
+        CancellationToken ct)
     {
         var events = await _reader.GetEventsAsync(match.MatchId, ct);
         var lineups = await _reader.GetLineupAsync(match.MatchId, ct);
 
-        var homeClub = await GetOrCreateClubAsync(match.HomeTeam.HomeTeamId, match.HomeTeam.HomeTeamName, ct);
-        var awayClub = await GetOrCreateClubAsync(match.AwayTeam.AwayTeamId, match.AwayTeam.AwayTeamName, ct);
+        var homeClub = GetOrCreateClub(clubsByStatsBombTeamId, match.HomeTeam.HomeTeamId, match.HomeTeam.HomeTeamName);
+        var awayClub = GetOrCreateClub(clubsByStatsBombTeamId, match.AwayTeam.AwayTeamId, match.AwayTeam.AwayTeamName);
 
         _context.Matches.Add(new Match
         {
@@ -80,12 +107,12 @@ public class StatsBombIngestionService : IStatsBombIngestionService
                 continue;
             }
 
-            var player = await GetOrCreatePlayerAsync(stats.PlayerId, stats.PlayerName, ct);
-            await UpsertSeasonStatsAsync(player.Id, clubId, competitionId, seasonId, stats, ct);
+            var player = GetOrCreatePlayer(playersByStatsBombPlayerId, stats.PlayerId, stats.PlayerName);
+            UpsertSeasonStats(seasonStatsByPlayerAndClub, player.Id, clubId, competitionId, seasonId, stats);
 
             if (positionsByStatsBombPlayerId.TryGetValue(stats.PlayerId, out var statsBombPositions))
             {
-                await UpdatePositionTallyAsync(player, statsBombPositions, ct);
+                UpdatePositionTally(talliesByPlayerId, player, statsBombPositions);
             }
         }
 
@@ -99,29 +126,32 @@ public class StatsBombIngestionService : IStatsBombIngestionService
         await _context.SaveChangesAsync(ct);
     }
 
-    private async Task<Club> GetOrCreateClubAsync(int statsBombTeamId, string name, CancellationToken ct)
+    private Club GetOrCreateClub(Dictionary<int, Club> clubsByStatsBombTeamId, int statsBombTeamId, string name)
     {
-        var club = await _context.Clubs.FirstOrDefaultAsync(c => c.StatsBombTeamId == statsBombTeamId, ct);
-        if (club is not null)
+        if (clubsByStatsBombTeamId.TryGetValue(statsBombTeamId, out var club))
         {
             return club;
         }
 
         club = new Club { Id = Guid.NewGuid(), StatsBombTeamId = statsBombTeamId, Name = name };
+        clubsByStatsBombTeamId[statsBombTeamId] = club;
         _context.Clubs.Add(club);
         return club;
     }
 
-    private async Task UpdatePositionTallyAsync(Player player, List<string> statsBombPositions, CancellationToken ct)
+    private void UpdatePositionTally(
+        Dictionary<Guid, List<PlayerPositionTally>> talliesByPlayerId, Player player, List<string> statsBombPositions)
     {
         var increments = statsBombPositions
             .Select(StatsBombPositionMapper.Map)
             .GroupBy(position => position)
             .ToDictionary(g => g.Key, g => g.Count());
 
-        var tallies = await _context.PlayerPositionTallies
-            .Where(t => t.PlayerId == player.Id)
-            .ToListAsync(ct);
+        if (!talliesByPlayerId.TryGetValue(player.Id, out var tallies))
+        {
+            tallies = [];
+            talliesByPlayerId[player.Id] = tallies;
+        }
 
         foreach (var (position, increment) in increments)
         {
@@ -140,27 +170,26 @@ public class StatsBombIngestionService : IStatsBombIngestionService
         player.Position = tallies.OrderByDescending(t => t.Count).First().Position;
     }
 
-    private async Task<Player> GetOrCreatePlayerAsync(int statsBombPlayerId, string name, CancellationToken ct)
+    private Player GetOrCreatePlayer(Dictionary<int, Player> playersByStatsBombPlayerId, int statsBombPlayerId, string name)
     {
-        var player = await _context.Players.FirstOrDefaultAsync(p => p.StatsBombPlayerId == statsBombPlayerId, ct);
-        if (player is not null)
+        if (playersByStatsBombPlayerId.TryGetValue(statsBombPlayerId, out var player))
         {
             return player;
         }
 
         player = new Player { Id = Guid.NewGuid(), StatsBombPlayerId = statsBombPlayerId, Name = name };
+        playersByStatsBombPlayerId[statsBombPlayerId] = player;
         _context.Players.Add(player);
         return player;
     }
 
-    private async Task UpsertSeasonStatsAsync(
-        Guid playerId, Guid clubId, int competitionId, int seasonId, PlayerAggregateStats stats, CancellationToken ct)
+    private void UpsertSeasonStats(
+        Dictionary<(Guid PlayerId, Guid ClubId), PlayerSeasonStats> seasonStatsByPlayerAndClub,
+        Guid playerId, Guid clubId, int competitionId, int seasonId, PlayerAggregateStats stats)
     {
-        var seasonStats = await _context.PlayerSeasonStats.FirstOrDefaultAsync(
-            s => s.PlayerId == playerId && s.ClubId == clubId && s.CompetitionId == competitionId && s.SeasonId == seasonId,
-            ct);
+        var key = (playerId, clubId);
 
-        if (seasonStats is null)
+        if (!seasonStatsByPlayerAndClub.TryGetValue(key, out var seasonStats))
         {
             seasonStats = new PlayerSeasonStats
             {
@@ -170,6 +199,7 @@ public class StatsBombIngestionService : IStatsBombIngestionService
                 CompetitionId = competitionId,
                 SeasonId = seasonId
             };
+            seasonStatsByPlayerAndClub[key] = seasonStats;
             _context.PlayerSeasonStats.Add(seasonStats);
         }
 
@@ -177,6 +207,8 @@ public class StatsBombIngestionService : IStatsBombIngestionService
         seasonStats.MinutesPlayed += (int)stats.MinutesPlayed;
         seasonStats.PassesCompleted += stats.PassesCompleted;
         seasonStats.PassesAttempted += stats.PassesAttempted;
+        seasonStats.Goals += stats.Goals;
+        seasonStats.Assists += stats.Assists;
         seasonStats.ExpectedGoals += stats.TotalXg;
         seasonStats.ExpectedAssists += stats.TotalXa;
         seasonStats.Pressures += stats.Pressures;

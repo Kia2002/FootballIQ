@@ -19,7 +19,7 @@ public class PlayerStatsAggregatorTests
         };
     }
 
-    private static StatsBombEvent ShotEvent(string id, int playerId, string playerName, double xg)
+    private static StatsBombEvent ShotEvent(string id, int playerId, string playerName, double xg, string? outcome = null)
     {
         return new StatsBombEvent
         {
@@ -27,7 +27,11 @@ public class PlayerStatsAggregatorTests
             Type = new StatsBombNamedId { Id = 16, Name = "Shot" },
             Team = new StatsBombNamedId { Id = 1, Name = "Barcelona" },
             Player = new StatsBombNamedId { Id = playerId, Name = playerName },
-            Shot = new StatsBombShotData { StatsbombXg = xg }
+            Shot = new StatsBombShotData
+            {
+                StatsbombXg = xg,
+                Outcome = outcome is null ? null : new StatsBombNamedId { Id = 0, Name = outcome }
+            }
         };
     }
 
@@ -127,6 +131,57 @@ public class PlayerStatsAggregatorTests
 
         var messi = stats.Single(s => s.PlayerId == 5);
         Assert.Equal(0.42, messi.TotalXa, precision: 4);
+    }
+
+    [Fact]
+    public void ComputeStats_WithShotEndingInGoal_CountsOneGoal()
+    {
+        var events = new List<StatsBombEvent>
+        {
+            ShotEvent(id: "shot-1", playerId: 9, playerName: "Luis Suarez", xg: 0.42, outcome: "Goal"),
+            ShotEvent(id: "shot-2", playerId: 9, playerName: "Luis Suarez", xg: 0.10, outcome: "Saved")
+        };
+
+        var aggregator = new PlayerStatsAggregator();
+
+        var stats = aggregator.ComputeStats(events, lineups: new List<StatsBombLineupTeam>());
+
+        var suarez = stats.Single(s => s.PlayerId == 9);
+        Assert.Equal(1, suarez.Goals);
+    }
+
+    [Fact]
+    public void ComputeStats_WithAssistedPassEndingInGoal_CountsOneAssist()
+    {
+        var events = new List<StatsBombEvent>
+        {
+            AssistPassEvent(playerId: 5, playerName: "Lionel Messi", assistedShotId: "shot-1"),
+            ShotEvent(id: "shot-1", playerId: 9, playerName: "Luis Suarez", xg: 0.42, outcome: "Goal")
+        };
+
+        var aggregator = new PlayerStatsAggregator();
+
+        var stats = aggregator.ComputeStats(events, lineups: new List<StatsBombLineupTeam>());
+
+        var messi = stats.Single(s => s.PlayerId == 5);
+        Assert.Equal(1, messi.Assists);
+    }
+
+    [Fact]
+    public void ComputeStats_WithAssistedPassEndingInSavedShot_CountsZeroAssists()
+    {
+        var events = new List<StatsBombEvent>
+        {
+            AssistPassEvent(playerId: 5, playerName: "Lionel Messi", assistedShotId: "shot-1"),
+            ShotEvent(id: "shot-1", playerId: 9, playerName: "Luis Suarez", xg: 0.42, outcome: "Saved")
+        };
+
+        var aggregator = new PlayerStatsAggregator();
+
+        var stats = aggregator.ComputeStats(events, lineups: new List<StatsBombLineupTeam>());
+
+        var messi = stats.Single(s => s.PlayerId == 5);
+        Assert.Equal(0, messi.Assists);
     }
 
     [Fact]

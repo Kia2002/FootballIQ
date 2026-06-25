@@ -51,6 +51,23 @@ public class WikidataEnrichmentServiceTests : IAsyncLifetime
         return player.Id;
     }
 
+    private async Task<Guid> SeedPlayerWithTwoSeasonsAsync(
+        string playerName, string oldClubName, int oldSeasonId, string recentClubName, int recentSeasonId)
+    {
+        var oldClub = new Club { Id = Guid.NewGuid(), StatsBombTeamId = new Random().Next(), Name = oldClubName };
+        var recentClub = new Club { Id = Guid.NewGuid(), StatsBombTeamId = new Random().Next(), Name = recentClubName };
+        var player = new Player { Id = Guid.NewGuid(), StatsBombPlayerId = new Random().Next(), Name = playerName };
+
+        _context.Clubs.AddRange(oldClub, recentClub);
+        _context.Players.Add(player);
+        _context.PlayerSeasonStats.AddRange(
+            new PlayerSeasonStats { Id = Guid.NewGuid(), PlayerId = player.Id, ClubId = oldClub.Id, CompetitionId = 11, SeasonId = oldSeasonId },
+            new PlayerSeasonStats { Id = Guid.NewGuid(), PlayerId = player.Id, ClubId = recentClub.Id, CompetitionId = 11, SeasonId = recentSeasonId });
+        await _context.SaveChangesAsync(CancellationToken.None);
+
+        return player.Id;
+    }
+
     [Fact]
     public async Task EnrichPlayerDemographicsAsync_WithConfidentMatch_SetsDateOfBirth()
     {
@@ -106,5 +123,31 @@ public class WikidataEnrichmentServiceTests : IAsyncLifetime
 
         var player = await _context.Players.SingleAsync(p => p.Id == playerId);
         Assert.Equal(new DateTime(2000, 1, 1), player.DateOfBirth);
+    }
+
+    [Fact]
+    public async Task EnrichPlayerDemographicsAsync_WithTwoSeasonsAtDifferentClubs_DisambiguatesUsingMostRecentClub()
+    {
+        var playerId = await SeedPlayerWithTwoSeasonsAsync(
+            "Ambiguous Player", oldClubName: "Old Club FC", oldSeasonId: 42, recentClubName: "New Club FC", recentSeasonId: 90);
+
+        // Two same-named candidates: one matches the player's old club, the other matches their most recent club.
+        // Only the most-recent-club match should be trusted as confident.
+        var fakeClient = new FakeWikidataClient(new Dictionary<string, List<WikidataPersonResult>>
+        {
+            ["Ambiguous Player"] =
+            [
+                new() { BirthDate = new DateTime(1985, 1, 1), Clubs = ["Old Club FC"] },
+                new() { BirthDate = new DateTime(1995, 5, 5), Clubs = ["New Club FC"] }
+            ]
+        });
+
+        var service = new WikidataEnrichmentService(fakeClient, _context);
+        var updatedCount = await service.EnrichPlayerDemographicsAsync(CancellationToken.None);
+
+        Assert.Equal(1, updatedCount);
+
+        var player = await _context.Players.SingleAsync(p => p.Id == playerId);
+        Assert.Equal(new DateTime(1995, 5, 5), player.DateOfBirth);
     }
 }

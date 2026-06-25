@@ -69,9 +69,12 @@ public class WikidataEnrichmentService : IPlayerEnrichmentService
 
         var rows = await _context.PlayerSeasonStats
             .Where(s => idList.Contains(s.PlayerId))
+            .OrderByDescending(s => s.SeasonId)
             .Select(s => new { s.PlayerId, s.Club.Name })
             .ToListAsync(ct);
 
+        // Ordered descending by season above, so the first row per player is their most recent club -
+        // GroupBy preserves source order here because this runs against an in-memory List (LINQ to Objects).
         return rows
             .GroupBy(x => x.PlayerId)
             .ToDictionary(g => g.Key, g => g.First().Name);
