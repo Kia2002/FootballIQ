@@ -1,6 +1,7 @@
 using FootballIQ.Application.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace FootballIQ.Infrastructure.BackgroundServices;
 
@@ -9,11 +10,14 @@ public class DataIngestionBackgroundService : BackgroundService
 {
     private readonly IngestionWorkQueue _queue;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<DataIngestionBackgroundService> _logger;
 
-    public DataIngestionBackgroundService(IngestionWorkQueue queue, IServiceScopeFactory scopeFactory)
+    public DataIngestionBackgroundService(
+        IngestionWorkQueue queue, IServiceScopeFactory scopeFactory, ILogger<DataIngestionBackgroundService> logger)
     {
         _queue = queue;
         _scopeFactory = scopeFactory;
+        _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -30,9 +34,18 @@ public class DataIngestionBackgroundService : BackgroundService
                 break;
             }
 
-            using var scope = _scopeFactory.CreateScope();
-            var ingestionService = scope.ServiceProvider.GetRequiredService<IStatsBombIngestionService>();
-            await ingestionService.IngestSeasonAsync(item.CompetitionId, item.SeasonId, stoppingToken);
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var ingestionService = scope.ServiceProvider.GetRequiredService<IStatsBombIngestionService>();
+                await ingestionService.IngestSeasonAsync(item.CompetitionId, item.SeasonId, stoppingToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex,
+                    "Ingestion failed for competitionId={CompetitionId}, seasonId={SeasonId}",
+                    item.CompetitionId, item.SeasonId);
+            }
         }
     }
 }
