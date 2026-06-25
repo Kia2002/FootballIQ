@@ -22,8 +22,9 @@ public class WikidataEnrichmentService : IPlayerEnrichmentService
     {
         var playersNeedingEnrichment = await _context.Players
             .Where(p => p.DateOfBirth == null)
-            .Select(p => new { p.Id, p.Name })
             .ToListAsync(ct);
+
+        var playersById = playersNeedingEnrichment.ToDictionary(p => p.Id);
 
         var clubNameByPlayerId = await GetClubNamesByPlayerIdAsync(playersNeedingEnrichment.Select(p => p.Id), ct);
 
@@ -52,7 +53,7 @@ public class WikidataEnrichmentService : IPlayerEnrichmentService
                     continue;
                 }
 
-                var player = await _context.Players.SingleAsync(p => p.Id == playerInfo.Id, ct);
+                var player = playersById[playerInfo.Id];
                 player.DateOfBirth = DateTime.SpecifyKind(birthDate.Value, DateTimeKind.Utc);
                 updatedCount++;
             }
