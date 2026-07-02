@@ -153,6 +153,8 @@ public class DataIngestionBackgroundServiceTests
 }
 ```
 
+> **Note (added retroactively):** `DataIngestionBackgroundService` gained a third constructor parameter, `ILogger<DataIngestionBackgroundService>`, in the later Layer 2 cleanup pass (see `2026-06-25-layer-2-cleanup.md`, Task 2) so failures are logged instead of crashing the host silently. The two-parameter signature above reflects this plan's state at the time it was written.
+
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test tests/FootballIQ.Infrastructure.Tests --filter DataIngestionBackgroundServiceTests`

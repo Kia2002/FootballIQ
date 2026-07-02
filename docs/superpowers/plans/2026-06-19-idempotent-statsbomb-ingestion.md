@@ -6,7 +6,7 @@
 
 **Goal:** Build a `StatsBombIngestionService` that reads matches/events/lineups via the existing `IStatsBombReader`, writes `Club`, `Player`, `Match`, and `PlayerSeasonStats` rows to Postgres, and is safe to re-run: running it twice for the same competition/season produces identical row counts (no duplicates).
 
-**Architecture:** A new `IngestionLog` table records one row per StatsBomb match ID once it has been fully processed. Before processing a match, the service checks this table; if a row already exists, the match is skipped entirely. The check-and-write happens inside the same `SaveChangesAsync` call as the rest of that match's data, so a crash mid-match never leaves a "half-ingested, marked as done" state.
+**Architecture:** A new `IngestionLog` table records one row per StatsBomb match ID once it has been fully processed. Before processing a match, the service checks this table (a single read at the start of the run); if a row already exists, the match is skipped entirely. The write to `IngestionLog` happens in the same `SaveChangesAsync` call as the rest of that match's data (`Match`, `PlayerSeasonStats`, etc.), so that write is all-or-nothing per match — a crash mid-match commits nothing, and a retry reprocesses the match cleanly instead of leaving a "half-ingested, marked as done" state. Unique indexes on `Match.StatsBombMatchId` and `IngestionLog.StatsBombMatchId` are the backstop against duplicate rows if two ingestion runs ever overlap.
 
 **Tech Stack:** EF Core 9 (migrations, `DbContext`), existing `PlayerStatsAggregator`/`IStatsBombReader` from Tasks 2.3–2.4, xUnit + Testcontainers.PostgreSql for the integration test (same pattern as `PlayerRepositoryTests`).
 
